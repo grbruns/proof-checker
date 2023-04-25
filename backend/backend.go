@@ -28,6 +28,7 @@ var (
         "sislam@csumb.edu":   true,
 		"gbruns@csumb.edu":   true,
 		"cohunter@csumb.edu": true,
+        "ndoss@csumb.edu": true,
 	}
 
 	// When started via systemd, WorkingDirectory is set to one level above the public_html directory
