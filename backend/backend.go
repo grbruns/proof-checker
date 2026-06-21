@@ -1,28 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
 	"flag"
 
-	datastore "./datastore"
-	tokenauth "./google-token-auth"
+	datastore "proofchecker/datastore"
 )
 
 var (
-	// Set allowed domains here.
-	authorized_domains = []string{
-		"csumb.edu",
-	}
-
-	// Client-side client ID from your Google Developer Console
-	// Same as in the front-end index.php
-	authorized_client_ids = []string{
-		"266670200080-to3o173goghk64b6a0t0i04o18nt2r3i.apps.googleusercontent.com",
-	}
-
 	admin_users = map[string]bool{
         "abiblarz@csumb.edu": true,
         "sislam@csumb.edu":   true,
@@ -37,6 +26,28 @@ var (
 
 type userWithEmail interface {
 	GetEmail() string
+}
+
+type simpleEmail struct{ email string }
+
+func (se simpleEmail) GetEmail() string { return se.email }
+
+// withEmail reads the X-Auth-Token header as a plain email address.
+// No cryptographic verification — for local/dev use only.
+func withEmail(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != "POST" || req.Body == nil {
+			http.Error(w, "Request not authorized.", 401)
+			return
+		}
+		email := req.Header.Get("X-Auth-Token")
+		if email == "" {
+			http.Error(w, "Not authenticated.", 401)
+			return
+		}
+		ctx := context.WithValue(req.Context(), "tok", simpleEmail{email})
+		next.ServeHTTP(w, req.WithContext(ctx))
+	})
 }
 
 type Env struct {
@@ -226,15 +237,11 @@ func main() {
 		Env.populateTestData()
 	}
 
-	// Initialize token auth/cache
-	tokenauth.SetAuthorizedDomains(authorized_domains)
-	tokenauth.SetAuthorizedClientIds(authorized_client_ids)
-
 	// method saveproof : POST : JSON <- id_token, proof
-	http.Handle("/saveproof", tokenauth.WithValidToken(http.HandlerFunc(Env.saveProof)))
+	http.Handle("/saveproof", withEmail(http.HandlerFunc(Env.saveProof)))
 
 	// method user : POST : JSON -> [proof, proof, ...]
-	http.Handle("/proofs", tokenauth.WithValidToken(http.HandlerFunc(Env.getProofs)))
+	http.Handle("/proofs", withEmail(http.HandlerFunc(Env.getProofs)))
 
 	// Get admin users -- this is a public endpoint, no token required
 	// Can be changed to require token, but would reduce cacheability

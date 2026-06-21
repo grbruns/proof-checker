@@ -8,58 +8,41 @@ const repositoryData = {
 
 let adminUsers = [];
 
-/**
- * This function is called by the Google Sign-in Button
- * @param {*} googleUser 
- */
-function onSignIn(googleUser) {
-   console.log("onSignIn", googleUser);
-
-   // This response will be cached after the first page load
+function handleSignIn() {
+   const email = document.getElementById('signin-email').value.trim();
+   if (!email) return;
    $.getJSON('/backend/admins', (admins) => {
       try {
-	 adminUsers = admins['Admins'];
+         adminUsers = admins['Admins'];
       } catch(e) {
-	 console.error('Unable to load admin users', e);
+         console.error('Unable to load admin users', e);
       }
-
-      new User(googleUser)
-	 .initializeDisplay()
-	 .loadProofs();
+      new User(email).initializeDisplay().loadProofs();
    });
 }
 
-/**
- * Class for functionality specific to user sign-in/authentication
- */
 class User {
-   // Constructor is called from User.onSignIn - not intended for direct use.
-   constructor(googleUser) {
-      this.profile = googleUser.getBasicProfile();
-      this.domain = googleUser.getHostedDomain();
-      this.email = this.profile.getEmail();
-      this.name = this.profile.getName();
+   constructor(email) {
+      this.email = email;
+      User._currentEmail = email;
 
       if (adminUsers.indexOf(this.email) > -1) {
-	 console.log('Logged in as an administrator.');
-	 this.showAdminFunctionality();
+         console.log('Logged in as an administrator.');
+         this.showAdminFunctionality();
       }
-
-      this.attachSignInChangeListener();
       return this;
    }
 
    initializeDisplay() {
       $('#user-email').text(this.email);
+      $('#signin-form').hide();
       $('#load-container').show();
       $('#nameyourproof').show();
-
       return this;
    }
 
    showAdminFunctionality() {
       $('#adminLink').show();
-
       return this;
    }
 
@@ -67,65 +50,33 @@ class User {
       loadUserProofs();
       loadRepoProofs();
       loadUserCompletedProofs();
-
       return this;
-   }
-
-   attachSignInChangeListener() {
-      gapi.auth2.getAuthInstance().isSignedIn.listen(this.signInChangeListener);
-
-      return this;
-   }
-
-   signInChangeListener(loggedIn) {
-      console.log('Sign in status changed', loggedIn);
-      window.location.reload();
    }
 
    static isSignedIn() {
-      return gapi.auth2.getAuthInstance().isSignedIn.get();
+      return !!User._currentEmail;
    }
 
    static isAdministrator() {
-      return adminUsers.indexOf(gapi.auth2.getAuthInstance().currentUser.get().getBasicProfile().getEmail()) > -1;
+      return adminUsers.indexOf(User._currentEmail) > -1;
    }
 
-   // Check if the current time (in unix timestamp) is after the token's expiration
-   static isTokenExpired() {
-      return + new Date() > gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().expires_at;
-   }
-
-   // Retrieve the last cached token
    static getIdToken() {
-      return gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().id_token;
-   }
-
-   // Get a newly issued token (returns a promise)
-   static refreshToken() {
-      return gapi.auth2.getAuthInstance().currentUser.get().reloadAuthResponse();
+      return User._currentEmail;
    }
 }
 
-// Verifies signed in and valid token, then calls authenticatedBackendPOST
 // Returns a promise which resolves to the response body or undefined
 function backendPOST(path_str, data_obj) {
    if (!User.isSignedIn()) {
       console.warn('Cannot send POST request to backend from unknown user.');
       if (sessionStorage.getItem('loginPromptShown') == null) {
-	 alert('You are not signed in.\nTo save your work, please sign in and then try again, or refresh the page.');
-	 sessionStorage.setItem('loginPromptShown', "true");
+         alert('You are not signed in.\nTo save your work, please sign in and then try again, or refresh the page.');
+         sessionStorage.setItem('loginPromptShown', "true");
       }
-      
-      return Promise.reject( 'Unauthenticated user' );
+      return Promise.reject('Unauthenticated user');
    }
-
-   if (User.isTokenExpired()) {
-      console.warn('Token expired; attempting to refresh token.');
-      return User.refreshToken().then(
-	 (googleUser) => authenticatedBackendPOST(path_str, data_obj, googleUser.id_token));
-   } else {
-      return authenticatedBackendPOST(path_str, data_obj, User.getIdToken());
-   }
+   return authenticatedBackendPOST(path_str, data_obj, User.getIdToken());
 }
 
 // Send a POST request to the backend, with auth token included
