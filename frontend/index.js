@@ -19,6 +19,7 @@ let currentProblemSetProblem = null;  // the problem currently loaded from a PS
 function handleSignIn() {
     const email = document.getElementById('signin-email').value.trim();
     if (!email) return;
+    sessionStorage.setItem('userEmail', email);
     $.getJSON('/backend/admins', (admins) => {
         try { adminUsers = admins['Admins']; } catch(e) { console.error(e); }
         new User(email).initializeDisplay().loadProofs();

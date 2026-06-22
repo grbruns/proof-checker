@@ -27,6 +27,7 @@ function handleSignIn() {
     const val = $('#signinEmail').val().trim();
     if (!val) return;
     email = val;
+    sessionStorage.setItem('userEmail', email);
 
     api('GET', '/admin/instructors').then(instructors => {
         $('#signinRow').hide();
@@ -134,6 +135,10 @@ function downloadCsv() {
 // ── Document ready ─────────────────────────────────────────────────────────
 $(function () {
     $('#signinEmail').on('keydown', e => { if (e.key === 'Enter') handleSignIn(); });
+
+    // Auto sign-in if email was saved from another page
+    const saved = sessionStorage.getItem('userEmail');
+    if (saved) { $('#signinEmail').val(saved); handleSignIn(); }
 
     $('#addInstructorBtn').on('click', () => {
         const val = $('#newInstructorEmail').val().trim();
