@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin — Proof Checker</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Noto+Sans" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Josefin+Sans" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="assets/lib/normalize.min.css" integrity="sha256-l85OmPOjvil/SOvVt3HnSSjzF1TUMyT9eV0c2BzEGzU=" />
+  <link rel="stylesheet" href="assets/lib/semantic.min.css" integrity="sha256-9mbkOfVho3ZPXfM7W8sV2SndrGDuh7wuyLjtsWeTI1Q=" />
+  <link rel="stylesheet" href="index.css" />
+  <style>
+    #main { padding: 1.5rem; }
+    .instructor-row { display: flex; align-items: center; justify-content: space-between;
+                      padding: .4rem .6rem; border-radius: 4px; margin-bottom: 2px; }
+    .instructor-row:hover { background: rgba(0,0,0,.04); }
+    .course-group { margin-bottom: 1.5rem; }
+    .course-group-label { font-weight: bold; color: #555; margin-bottom: .4rem; font-size: .95em; }
+  </style>
+</head>
+<body>
+
+<div id="top-menu" class="ui menu" style="height:60px;">
+  <div class="header item">
+    <h1 id="title"><a href="index.html">Proof Checker</a></h1>
+  </div>
+  <a href="index.html" class="item">Proof Editor</a>
+  <a href="instructor.html" class="item">Instructor</a>
+  <a href="admin.html" class="active item">Admin</a>
+  <div class="right menu">
+    <div class="header item"><span id="userEmail"></span></div>
+    <div id="signinRow" class="item">
+      <div class="ui input" style="margin-right:.5rem;">
+        <input id="signinEmail" type="email" placeholder="your@email.edu" />
+      </div>
+      <button class="ui button" onclick="handleSignIn()">Sign In</button>
+    </div>
+  </div>
+</div>
+
+<div id="notAuthorized" class="ui error message" style="margin:2rem; display:none;">
+  <div class="header">Not authorized</div>
+  <p>App admin access is required. Contact the site owner if you believe this is an error.</p>
+</div>
+
+<div id="main" style="display:none;">
+  <div class="ui stackable grid">
+
+    <!-- Left: Instructors -->
+    <div class="six wide column">
+      <h2 class="ui header">Instructors</h2>
+      <div class="ui action input" style="margin-bottom:1rem; width:100%;">
+        <input type="email" id="newInstructorEmail" placeholder="email@csumb.edu" style="flex:1;" />
+        <button class="ui primary button" id="addInstructorBtn">Add</button>
+      </div>
+      <div id="instructorList"></div>
+    </div>
+
+    <!-- Right: All courses -->
+    <div class="ten wide column">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
+        <h2 class="ui header" style="margin:0;">All Courses</h2>
+        <button class="ui small teal button" id="downloadCsvBtn">Download Student CSV</button>
+      </div>
+      <div id="courseList"></div>
+    </div>
+
+  </div>
+</div>
+
+<script src="assets/lib/jquery.min.js" integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0="></script>
+<script src="assets/lib/semantic.min.js" integrity="sha256-t8GepnyPmw9t+foMh3mKNvcorqNHamSKtKRxxpUEgFI="></script>
+<script src="admin.js"></script>
+</body>
+</html>

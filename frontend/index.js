@@ -108,21 +108,6 @@ function backendGET(path_str) {
     });
 }
 
-// ── Admin CSV download ─────────────────────────────────────────────────────
-function getCSV() {
-    backendPOST('proofs', { selection: 'downloadrepo' }).then((data) => {
-        if (!Array.isArray(data) || data.length < 1) { console.error('No proofs received.'); return; }
-        let csv = Object.keys(data[0]).join(',') + '\n';
-        csv += data.map(proof =>
-            Object.values(proof).map(v => '"' + (Array.isArray(v) ? v.join('|') : v) + '"').join(',')
-        ).join('\n');
-        const a = document.createElement('a');
-        a.download = 'Student_Problems.csv';
-        a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-        a.click();
-    }, console.log);
-}
-
 // ── Legacy proof selector helpers ──────────────────────────────────────────
 const prepareSelect = (selector, options) => {
     const el = document.querySelector(selector);
@@ -494,9 +479,6 @@ $(document).ready(function () {
         }).fail(xhr => alert('Error: ' + (xhr.responseText || xhr.statusText)));
     });
 
-    // ── Admin modal ────────────────────────────────────────────────────────
-    $('#adminLink').on('click', () => $('#adminModal').modal('show'));
-    $('.downloadCSV').on('click', () => getCSV());
 });
 
 // ── Proof UI helpers ───────────────────────────────────────────────────────
