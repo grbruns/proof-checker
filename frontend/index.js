@@ -1,466 +1,568 @@
 'use strict';
 
+// ── Legacy repository data ─────────────────────────────────────────────────
 const repositoryData = {
-   'userProofs': [],
-   'repoProofs': [],
-   'completedUserProofs': []
-}
-
+    userProofs: [],
+    repoProofs: [],       // kept for backward compat; no longer displayed
+    completedUserProofs: []
+};
 let adminUsers = [];
 
+// ── Problem-set navigation state ───────────────────────────────────────────
+let currentCourseId   = null;
+let currentPsId       = null;
+let currentPsName     = '';
+let currentPsProblems = [];
+let currentProblemSetProblem = null;  // the problem currently loaded from a PS
+
+// ── Auth / User ────────────────────────────────────────────────────────────
 function handleSignIn() {
-   const email = document.getElementById('signin-email').value.trim();
-   if (!email) return;
-   $.getJSON('/backend/admins', (admins) => {
-      try {
-         adminUsers = admins['Admins'];
-      } catch(e) {
-         console.error('Unable to load admin users', e);
-      }
-      new User(email).initializeDisplay().loadProofs();
-   });
+    const email = document.getElementById('signin-email').value.trim();
+    if (!email) return;
+    $.getJSON('/backend/admins', (admins) => {
+        try { adminUsers = admins['Admins']; } catch(e) { console.error(e); }
+        new User(email).initializeDisplay().loadProofs();
+    });
 }
 
 class User {
-   constructor(email) {
-      this.email = email;
-      User._currentEmail = email;
+    constructor(email) {
+        this.email = email;
+        User._currentEmail = email;
+        if (adminUsers.indexOf(this.email) > -1) {
+            this.showAdminFunctionality();
+        }
+        return this;
+    }
 
-      if (adminUsers.indexOf(this.email) > -1) {
-         console.log('Logged in as an administrator.');
-         this.showAdminFunctionality();
-      }
-      return this;
-   }
+    initializeDisplay() {
+        $('#user-email').text(this.email);
+        $('#signin-form').hide();
+        $('#load-container').show();
+        $('#nameyourproof').show();
+        return this;
+    }
 
-   initializeDisplay() {
-      $('#user-email').text(this.email);
-      $('#signin-form').hide();
-      $('#load-container').show();
-      $('#nameyourproof').show();
-      return this;
-   }
+    showAdminFunctionality() {
+        $('#adminLink').show();
+        return this;
+    }
 
-   showAdminFunctionality() {
-      $('#adminLink').show();
-      return this;
-   }
+    showInstructorLink() {
+        $('#instructorLink').show();
+        $('#saveToPsBtn').show();
+        return this;
+    }
 
-   showInstructorLink() {
-      $('#instructorLink').show();
-      return this;
-   }
+    loadProofs() {
+        loadUserProofs();
+        loadCourses();
+        // Show Instructor link if the user is an instructor
+        $.ajax({
+            url: '/backend/instructor/courses',
+            method: 'GET',
+            headers: { 'X-Auth-Token': this.email },
+            dataType: 'json',
+        }).then(() => this.showInstructorLink()).fail(() => {});
+        return this;
+    }
 
-   loadProofs() {
-      loadUserProofs();
-      loadRepoProofs();
-      loadUserCompletedProofs();
-      // Show Instructor link if this user is an instructor
-      $.ajax({
-         url: '/backend/instructor/courses',
-         method: 'GET',
-         headers: { 'X-Auth-Token': this.email },
-      }).then(() => this.showInstructorLink()).fail(() => {});
-      return this;
-   }
-
-   static isSignedIn() {
-      return !!User._currentEmail;
-   }
-
-   static isAdministrator() {
-      return adminUsers.indexOf(User._currentEmail) > -1;
-   }
-
-   static getIdToken() {
-      return User._currentEmail;
-   }
+    static isSignedIn()     { return !!User._currentEmail; }
+    static isAdministrator(){ return adminUsers.indexOf(User._currentEmail) > -1; }
+    static getIdToken()     { return User._currentEmail; }
 }
 
-// Returns a promise which resolves to the response body or undefined
+// ── Backend helpers ────────────────────────────────────────────────────────
 function backendPOST(path_str, data_obj) {
-   if (!User.isSignedIn()) {
-      console.warn('Cannot send POST request to backend from unknown user.');
-      if (sessionStorage.getItem('loginPromptShown') == null) {
-         alert('You are not signed in.\nTo save your work, please sign in and then try again, or refresh the page.');
-         sessionStorage.setItem('loginPromptShown', "true");
-      }
-      return Promise.reject('Unauthenticated user');
-   }
-   return authenticatedBackendPOST(path_str, data_obj, User.getIdToken());
+    if (!User.isSignedIn()) {
+        if (sessionStorage.getItem('loginPromptShown') == null) {
+            alert('You are not signed in.\nTo save your work, please sign in and then try again.');
+            sessionStorage.setItem('loginPromptShown', 'true');
+        }
+        return Promise.reject('Unauthenticated user');
+    }
+    return authenticatedBackendPOST(path_str, data_obj, User.getIdToken());
 }
 
-// Send a POST request to the backend, with auth token included
 function authenticatedBackendPOST(path_str, data_obj, id_token) {
-   return $.ajax({
-      url: '/backend/' + path_str,
-      method: 'POST',
-      data: JSON.stringify(data_obj),
-      dataType: 'json',
-      contentType: 'application/json; charset=utf-8',
-      headers: {
-	 'X-Auth-Token': id_token
-      }
-   }).then(
-      (data, textStatus, jqXHR) => {
-	 return data;
-      },
-      (jqXHR, textStatus, errorThrown) => {
-	 console.error(textStatus, errorThrown);
-      }
-   )
+    return $.ajax({
+        url: '/backend/' + path_str,
+        method: 'POST',
+        data: JSON.stringify(data_obj),
+        dataType: 'json',
+        contentType: 'application/json; charset=utf-8',
+        headers: { 'X-Auth-Token': id_token }
+    }).then(
+        (data) => data,
+        (jqXHR, textStatus, errorThrown) => { console.error(textStatus, errorThrown); }
+    );
 }
 
-// For administrators only - backend requires valid admin token
+function backendGET(path_str) {
+    if (!User.isSignedIn()) return Promise.reject('Unauthenticated');
+    return $.ajax({
+        url: '/backend/' + path_str,
+        method: 'GET',
+        dataType: 'json',
+        headers: { 'X-Auth-Token': User.getIdToken() }
+    });
+}
+
+// ── Admin CSV download ─────────────────────────────────────────────────────
 function getCSV() {
-   backendPOST('proofs', { selection: 'downloadrepo' }).then(
-      (data) => {
-	 console.log("downloadRepo", data);
-
-	 if (!Array.isArray(data) || data.length < 1) {
-            console.error('No proofs received.');
-            return;
-	 }
-
-	 let csv_header = Object.keys(data[0]).join(',') + '\n';
-
-	 let csv = data.reduce( (rows, proof) => {
-            return rows + Object.values(proof).reduce( (accum, elem) => {
-               if (Array.isArray(elem)) {
-		  return accum + ',"' + elem.join('|') + '"';
-               }
-               return accum + ',"' + elem + '"';
-            }) + '\n';
-	 }, csv_header);
-
-	 let downloadLink = document.createElement('a');
-	 downloadLink.download = "Student_Problems.csv";
-	 downloadLink.href = 'data:text/csv;charset=utf-8,' + encodeURI(csv);
-	 downloadLink.target = '_blank';
-	 downloadLink.click();
-      }, console.log);
+    backendPOST('proofs', { selection: 'downloadrepo' }).then((data) => {
+        if (!Array.isArray(data) || data.length < 1) { console.error('No proofs received.'); return; }
+        let csv = Object.keys(data[0]).join(',') + '\n';
+        csv += data.map(proof =>
+            Object.values(proof).map(v => '"' + (Array.isArray(v) ? v.join('|') : v) + '"').join(',')
+        ).join('\n');
+        const a = document.createElement('a');
+        a.download = 'Student_Problems.csv';
+        a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+        a.click();
+    }, console.log);
 }
 
+// ── Legacy proof selector helpers ──────────────────────────────────────────
 const prepareSelect = (selector, options) => {
-   let elem = document.querySelector(selector);
+    const el = document.querySelector(selector);
+    $(el).empty();
+    el.appendChild(Object.assign(new Option('Select...', null, true, true), { disabled: true }));
+    (options || []).forEach(proof => el.appendChild(new Option(proof.ProofName, proof.Id)));
+};
 
-   // Remove all child nodes from the select element
-   $(elem).empty();
-
-   // Create placeholder option
-   elem.appendChild(
-      new Option('Select...', null, true, true)
-   );
-
-   // Set placeholder to disabled so it does not show as selectable
-   elem.querySelector('option').setAttribute('disabled', 'disabled');
-
-   // Add option elements for the options
-   (options) && options.forEach( proof => {
-      let option = new Option(proof.ProofName, proof.Id);
-      elem.appendChild(option);
-   });
-}
-
-// load user's incomplete proofs
 function loadUserProofs() {
-   backendPOST('proofs', { selection: 'user' }).then(
-      (data) => {
-	 console.log("loadSelect", data);
-	 repositoryData.userProofs = data;
-	 prepareSelect('#userProofSelect', data);
-	 $('#userProofSelect').data('repositoryDataKey', 'userProofs')
-      }, console.log
-   );
+    backendPOST('proofs', { selection: 'user' }).then((data) => {
+        repositoryData.userProofs = data || [];
+        prepareSelect('#userProofSelect', data);
+        $('#userProofSelect').data('repositoryDataKey', 'userProofs');
+        if (data && data.length > 0) {
+            $('#legacyProofsWrap').show();
+        }
+    }, console.log);
 }
 
-// load repository problems
-function loadRepoProofs() {
-   backendPOST('proofs', { selection: 'repo' }).then(
-      (data) => {
-	 console.log("loadRepoProofs", data);
-	 repositoryData.repoProofs = data;
+// ── Course / Problem Set / Problem navigation ──────────────────────────────
+function shortDate(dtStr) {
+    if (!dtStr) return '';
+    try {
+        const d = new Date(dtStr.replace(' ', 'T'));
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch(e) { return dtStr.slice(0, 10); }
+}
 
-	 //prepareSelect('#repoProofSelect', data);
-	 let elem = document.querySelector('#repoProofSelect');
-	 $(elem).empty();
-
-	 elem.appendChild(
-            new Option('Select...', null, true, true)
-	 );
-
-	 let currentRepoUser;
-	 (data) && data.forEach( proof => {
-            if (currentRepoUser !== proof.UserSubmitted) {
-               currentRepoUser = proof.UserSubmitted;
-               elem.appendChild(
-		  new Option(proof.UserSubmitted, null, false, false)
-               );
-            }
-            elem.appendChild(
-               new Option(proof.ProofName, proof.Id)
+function loadCourses() {
+    backendGET('student/courses').then(courses => {
+        if (!courses || courses.length === 0) return;
+        if (courses.length === 1) {
+            currentCourseId = courses[0].id;
+            loadProblemSets(courses[0].id);
+        } else {
+            $('#courseSelect').empty().append(
+                $('<option>').val('').text('Select a course…').prop('disabled', true).prop('selected', true)
             );
-	 });
-
-	 // Make section headers not selectable
-	 $('#repoProofSelect option[value=null]').attr('disabled', 'disabled');
-
-	 $('#repoProofSelect').data('repositoryDataKey', 'repoProofs');
-      }, console.log
-   );
+            courses.forEach(c => $('#courseSelect').append(new Option(c.name, c.id)));
+            $('#courseSelectWrap').show();
+        }
+    }).fail(() => {});  // not enrolled in any course — that's fine
 }
 
-// load user's completed proofs
-function loadUserCompletedProofs() {
-   backendPOST('proofs', { selection: 'completedrepo' }).then(
-      (data) => {
-	 console.log("loadUserCompletedProofs", data);
-	 repositoryData.completedUserProofs = data;
-	 prepareSelect('#userCompletedProofSelect', data);
-	 $('#userCompletedProofSelect').data('repositoryDataKey', 'completedUserProofs')
-      }, console.log
-   );
+function loadProblemSets(courseId) {
+    currentCourseId = courseId;
+    $('#psSelectWrap').hide();
+    $('#problemSelectWrap').hide();
+    $('#retryWrap').hide();
+
+    backendGET('student/courses/' + courseId + '/problem_sets').then(psList => {
+        if (!psList || psList.length === 0) return;
+        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+        $('#psSelect').empty().append(
+            $('<option>').val('').text('Select a problem set…').prop('disabled', true).prop('selected', true)
+        );
+        psList.forEach(ps => {
+            let label = ps.name;
+            const closed = ps.until && ps.until < now;
+            if (closed) label += ' [Closed]';
+            else if (ps.due_date) label += ' [Due: ' + shortDate(ps.due_date) + ']';
+            const opt = new Option(label, ps.id);
+            if (closed) opt.disabled = true;
+            $('#psSelect').append(opt);
+        });
+        $('#psSelectWrap').show();
+    });
 }
 
-$(document).ready(function() {
+function loadProblemList(psId) {
+    currentPsId = psId;
+    $('#problemSelectWrap').hide();
+    $('#retryWrap').hide();
 
-   // store proof when check button is clicked
-   $('.proofContainer').on('checkProofEvent', (event) => {
-      console.log(event, event.detail, event.detail.proofdata);
+    // Store PS name for context display
+    const psOpt = $('#psSelect option:selected');
+    currentPsName = psOpt.length ? psOpt.text().replace(/\s*\[.*$/, '') : '';
 
-      let proofData = event.detail.proofdata;
+    backendGET('student/problem_sets/' + psId + '/problems').then(problems => {
+        if (!problems || problems.length === 0) return;
+        currentPsProblems = problems;
 
-      let Premises = [].concat(proofData.filter( elem => elem.jstr == "Pr" ).map( elem => elem.wffstr ));
+        $('#problemSelect').empty().append(
+            $('<option>').val('').text('Select a problem…').prop('disabled', true).prop('selected', true)
+        );
+        problems.forEach(p => {
+            const icon = p.solved ? '● ' : (p.in_progress ? '◑ ' : '○ ');
+            const pts  = p.points != null ? ' (' + p.points + 'pt)' : '';
+            $('#problemSelect').append(new Option(icon + p.name + pts, p.id));
+        });
+        $('#problemSelectWrap').show();
+    });
+}
 
-      // The Logic and Rules arrays used to contain lines of the proof, but
-      // this only worked for proofs with no subproofs.
-      // Now Logic is always a array containing a single string, and Rules is
-      // always an empty array.
-      let Logic = [JSON.stringify(proofData)],
-          Rules = [];
+function selectProblem(problemId) {
+    const problem = currentPsProblems.find(p => p.id === problemId);
+    if (!problem) return;
 
-      let entryType = "proof"; // What is this meant to be used for?
+    backendGET('student/problems/' + problemId + '/attempt')
+        .then(attempt => loadProblem(problem, attempt))
+        .fail(xhr => {
+            // 404 = no attempt yet; anything else = still try to load fresh
+            loadProblem(problem, null);
+        });
+}
 
-      let proofName = $('.proofNameSpan').text() || "n/a";
-      let repoProblem = $('#repoProblem').val() || "false";
-      let proofType = predicateSettings ? "fol" : "prop";
+function loadProblem(problem, savedAttempt) {
+    currentProblemSetProblem = problem;
 
-      let proofCompleted = event.detail.proofCompleted;
-      let conclusion = event.detail.wantedConc;
+    // Set logic type
+    predicateSettings = (problem.logic_type === 'fol');
+    $('#folradio').prop('checked', predicateSettings);
+    $('#tflradio').prop('checked', !predicateSettings);
 
-      let postData = new Proof(entryType, proofName, proofType, Premises, Logic, Rules,
-			       proofCompleted, conclusion, repoProblem);
+    // Pre-load saved logic into proofContainer (createProb reads it from there)
+    if (savedAttempt && savedAttempt.current_logic) {
+        const raw = savedAttempt.current_logic;
+        const logicArr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (Array.isArray(logicArr) && logicArr.length > 0) {
+            $('.proofContainer').data({ Logic: [JSON.stringify(logicArr)], Rules: [] });
+        } else {
+            $('.proofContainer').removeData();
+        }
+    } else {
+        $('.proofContainer').removeData();
+    }
 
-      console.log('saving proof', postData);
-      backendPOST('saveproof', postData).then(
-	 (data) => {
-	    console.log('proof saved', data);
-	    
-	    if (postData.proofCompleted == "true") {
-               loadUserCompletedProofs();
-	    } else {
-               loadUserProofs();
-	    }
-		
-            loadRepoProofs();
-	 }, console.log)
-   });
+    $('#proofName').val(problem.name);
+    $('#probpremises').val((problem.premises || []).join(', '));
+    $('#probconc').val(problem.conclusion);
+    $('#repoProblem').val('false');
 
-   // admin users - publish problems to public repo
-   $('.proofContainer').on('click', '#togglePublicButton', (event) => {
-      let proofName = $('.proofNameSpan').text();
-      if (!proofName || proofName == "") {
-	 proofName = prompt("Please enter a name for your proof:");
-      }
-      if (!proofName) {
-	 console.error('No proof name entered');
-	 return;
-      }
+    $('#retryWrap').toggle(!!(savedAttempt && savedAttempt.solved));
 
-      if (!proofName.startsWith('Repository - ')) {
-	 proofName = 'Repository - ' + proofName;
-      }
-      $('.proofNameSpan').text(proofName);
+    $('#createProb').click();
 
-      let publicStatus = $('#repoProblem').val() || 'false';
-      if (publicStatus === 'false') {
-	 $('#repoProblem').val('true');
-	 $('#togglePublicButton').fadeOut().text('Make Private').fadeIn();
-      } else {
-	 $('#repoProblem').val('false');
-	 $('#togglePublicButton').fadeOut().text('Make Public').fadeIn();
-      }
+    // Show problem context beneath the proof title
+    const pos = currentPsProblems.indexOf(problem) + 1;
+    const total = currentPsProblems.length;
+    $('#problemcontext').text(currentPsName + ' · Problem ' + pos + ' of ' + total).show();
+}
 
-      $('#checkButton').click();
-   });
+function refreshProblemStatus(problemId, status) {
+    const icons = { solved: '● ', in_progress: '◑ ', unsolved: '○ ' };
+    const icon = icons[status] || '◑ ';
+    const opt = $('#problemSelect option[value="' + problemId + '"]');
+    if (opt.length) opt.text(icon + opt.text().replace(/^[○●◑]\s/, ''));
+    const p = currentPsProblems.find(p => p.id === problemId);
+    if (p) { p.solved = (status === 'solved'); p.in_progress = (status !== 'unsolved'); }
+}
 
-   // populate form when any repository proof selected
-   $('.proofSelect').change( (event) => {
-      // get the name of the selected item and the selected repository
-      let selectedDataId = event.target.value;
-      let selectedDataSetName = $(event.target).data('repositoryDataKey');
+// ── Save-to-Problem-Set (instructor shortcut) ──────────────────────────────
+function openSaveToPsModal() {
+    const proofName  = $('#proofName').val() || $('.proofNameSpan').text() || '';
+    const logicType  = $('#folradio').is(':checked') ? 'fol' : 'prop';
 
-      // get the proof from the repository (== means '3' is equal to 3)
-      let selectedDataSet = repositoryData[selectedDataSetName];
-      let selectedProof = selectedDataSet.filter( proof => proof.Id == selectedDataId );
-      if (!selectedProof || selectedProof.length < 1) {
-	 console.error("Selected proof ID not found.");
-	 return;
-      }
-      selectedProof = selectedProof[0];
-      console.log('selected proof', selectedProof);
+    $('#stpsNameInp').val(proofName);
+    $('#stpsLogicInp').val(logicType === 'fol' ? 'First-Order' : 'Propositional');
+    $('#stpsPointsInp').val('');
+    $('#stpsCourseSelect').empty().append(
+        $('<option>').val('').text('Loading…').prop('disabled', true).prop('selected', true)
+    );
+    $('#stpsPsSelect').empty();
 
-      // set repoProblem if proof originally loaded from the repository select
-      if (selectedDataSetName == 'repoProofs' || selectedProof.repoProblem == "true") {
-	 $('#repoProblem').val('true');
-      } else {
-	 $('#repoProblem').val('false');
-      }
+    $.ajax({
+        url: '/backend/instructor/courses', method: 'GET',
+        headers: { 'X-Auth-Token': User.getIdToken() }, dataType: 'json',
+    }).then(courses => {
+        $('#stpsCourseSelect').empty().append(
+            $('<option>').val('').text('Select course…').prop('disabled', true).prop('selected', true)
+        );
+        (courses || []).forEach(c => $('#stpsCourseSelect').append(new Option(c.name, c.id)));
+    }).fail(() => {
+        $('#stpsCourseSelect').empty().append($('<option>').text('Error loading courses'));
+    });
 
-      // attach the proof body to the proofContainer
-      if (Array.isArray(selectedProof.Logic) && Array.isArray(selectedProof.Rules)) {
-	 $('.proofContainer').data({
-            'Logic': selectedProof.Logic,
-            'Rules': selectedProof.Rules
-	 });
-      }
+    $('#saveToPsModal').modal('show');
+}
 
-      // set proofName, probpremises, and probconc; then click on #createProb
-      // (add a small delay to show the user what's being done)
-      let delayTime = 200;
-      $.when(
-	 $('#folradio').prop('checked', true),
-	 // Checking this radio button will uncheck the other radio button
-	 $('#tflradio').prop('checked', (selectedProof.ProofType == 'prop')),
-	 $('#proofName').delay(delayTime).val(selectedProof.ProofName),
-	 $('#probpremises').delay(delayTime).val(selectedProof.Premise.join(',')),
-	 $('#probconc').delay(delayTime).val(selectedProof.Conclusion)
-      ).then(
-	 function () {
-            $('#createProb').click();
-	 }
-      );
-   });
+// ── Document ready ─────────────────────────────────────────────────────────
+$(document).ready(function () {
 
-   // create a problem based on premise and conclusion
-   // get the proof name, premises, and conclusion from the document
-   $("#createProb").click( function() {
-      // predicateSettings is a global var defined in syntax_upstream.js
-      predicateSettings = (document.getElementById("folradio").checked);
-      let premisesString = document.getElementById("probpremises").value;
-      let conclusionString = document.getElementById("probconc").value;
-      let proofName = document.getElementById('proofName').value;
-      createProb(proofName, premisesString, conclusionString);
-   });
+    // ── Check Proof event: save to legacy table + problem-set attempt ──────
+    $('.proofContainer').on('checkProofEvent', (event) => {
+        const proofData = event.detail.proofdata;
+        const Premises  = proofData.filter(e => e.jstr === 'Pr').map(e => e.wffstr);
+        const Logic     = [JSON.stringify(proofData)];
+        const Rules     = [];
+        const proofName  = $('.proofNameSpan').text() || 'n/a';
+        const repoProblem = $('#repoProblem').val() || 'false';
+        const proofType  = predicateSettings ? 'fol' : 'prop';
+        const proofCompleted = event.detail.proofCompleted;
+        const conclusion = event.detail.wantedConc;
 
-   $('.newProof').click( event => {
-      resetProofUI();
+        const postData = new Proof('proof', proofName, proofType, Premises, Logic, Rules,
+                                   proofCompleted, conclusion, repoProblem);
 
-      // reset 'repoProblem'
-      $('#repoProblem').val('false');
+        backendPOST('saveproof', postData).then((data) => {
+            if (postData.proofCompleted === 'true') {
+                // refresh legacy dropdown quietly
+                backendPOST('proofs', { selection: 'user' }).then(d => {
+                    repositoryData.userProofs = d || [];
+                    prepareSelect('#userProofSelect', d);
+                });
+            }
+        }, console.log);
 
-      $('.createProof').slideDown();
-      $('.proofContainer').slideUp();
-   });
+        // Also save to problem-set attempt endpoint if a PS problem is loaded
+        if (currentProblemSetProblem && User.isSignedIn()) {
+            const solved = proofCompleted === 'true';
+            $.ajax({
+                url: '/backend/student/problems/' + currentProblemSetProblem.id + '/attempt',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ logic: proofData, proof_completed: solved }),
+                headers: { 'X-Auth-Token': User.getIdToken() },
+                dataType: 'json',
+            }).then(() => {
+                refreshProblemStatus(currentProblemSetProblem.id, solved ? 'solved' : 'in_progress');
+                if (solved) $('#retryWrap').show();
+            }).fail(xhr => {
+                if (xhr.status === 403 || xhr.status === 429) {
+                    alert(xhr.responseText || 'Submission rejected: past deadline or max attempts reached.');
+                }
+            });
+        }
+    });
 
-   $('#proofName').popup({ on: 'hover' });
-   $('#repoProofSelect').popup({ on: 'hover' });
-   $('#userCompletedProofSelect').popup({ on: 'hover' });
+    // ── Admin: toggle public/repo status ──────────────────────────────────
+    $('.proofContainer').on('click', '#togglePublicButton', (event) => {
+        let proofName = $('.proofNameSpan').text();
+        if (!proofName) proofName = prompt('Please enter a name for your proof:');
+        if (!proofName) return;
+        if (!proofName.startsWith('Repository - ')) proofName = 'Repository - ' + proofName;
+        $('.proofNameSpan').text(proofName);
 
-   // Admin modal
-   $('#adminLink').click( (event) => {
-      $('.ui.modal').modal('show');
-   });
+        const publicStatus = $('#repoProblem').val() || 'false';
+        if (publicStatus === 'false') {
+            $('#repoProblem').val('true');
+            $('#togglePublicButton').fadeOut().text('Make Private').fadeIn();
+        } else {
+            $('#repoProblem').val('false');
+            $('#togglePublicButton').fadeOut().text('Make Public').fadeIn();
+        }
+        $('#checkButton').click();
+    });
 
-   $('.downloadCSV').click( () => getCSV() );
-   // End admin modal
+    // ── Legacy proof selector (userProofSelect only) ───────────────────────
+    $('#userProofSelect').on('change', (event) => {
+        const selectedId  = event.target.value;
+        const dataSet     = repositoryData['userProofs'];
+        const selectedProof = dataSet.filter(p => p.Id == selectedId)[0];
+        if (!selectedProof) { console.error('Proof ID not found.'); return; }
+
+        $('#repoProblem').val('false');
+        if (Array.isArray(selectedProof.Logic) && Array.isArray(selectedProof.Rules)) {
+            $('.proofContainer').data({ Logic: selectedProof.Logic, Rules: selectedProof.Rules });
+        }
+
+        predicateSettings = (selectedProof.ProofType !== 'prop');
+        $('#folradio').prop('checked', predicateSettings);
+        $('#tflradio').prop('checked', !predicateSettings);
+        $('#proofName').val(selectedProof.ProofName);
+        $('#probpremises').val(selectedProof.Premise.join(','));
+        $('#probconc').val(selectedProof.Conclusion);
+
+        // clear any PS context before loading legacy proof
+        currentProblemSetProblem = null;
+        $('#retryWrap').hide();
+        $('#problemcontext').hide().text('');
+
+        $('#createProb').click();
+    });
+
+    // ── Course / PS / Problem selects ─────────────────────────────────────
+    $('#courseSelect').on('change', function () {
+        const id = parseInt(this.value);
+        if (!id) return;
+        loadProblemSets(id);
+    });
+
+    $('#psSelect').on('change', function () {
+        const id = parseInt(this.value);
+        if (!id) return;
+        loadProblemList(id);
+    });
+
+    $('#problemSelect').on('change', function () {
+        const id = parseInt(this.value);
+        if (!id) return;
+        selectProblem(id);
+    });
+
+    // ── Retry button ───────────────────────────────────────────────────────
+    $('#retryBtn').on('click', () => {
+        if (!currentProblemSetProblem) return;
+        loadProblem(currentProblemSetProblem, null);
+    });
+
+    // ── Create problem (premises/conclusion form) ─────────────────────────
+    $('#createProb').on('click', function () {
+        predicateSettings = document.getElementById('folradio').checked;
+        createProb(
+            document.getElementById('proofName').value,
+            document.getElementById('probpremises').value,
+            document.getElementById('probconc').value
+        );
+    });
+
+    // ── Clear & start new proof ────────────────────────────────────────────
+    $('.newProof').on('click', () => {
+        resetProofUI();
+        $('#repoProblem').val('false');
+        currentProblemSetProblem = null;
+        $('#retryWrap').hide();
+        $('#problemcontext').hide().text('');
+        $('.createProof').slideDown();
+        $('.proofContainer').slideUp();
+    });
+
+    // ── Save to Problem Set modal ──────────────────────────────────────────
+    $('#saveToPsBtn').on('click', openSaveToPsModal);
+
+    $('#stpsCourseSelect').on('change', function () {
+        const courseId = this.value;
+        if (!courseId) return;
+        $('#stpsPsSelect').empty().append(
+            $('<option>').val('').text('Loading…').prop('disabled', true).prop('selected', true)
+        );
+        $.ajax({
+            url: '/backend/instructor/courses/' + courseId + '/problem_sets', method: 'GET',
+            headers: { 'X-Auth-Token': User.getIdToken() }, dataType: 'json',
+        }).then(psList => {
+            $('#stpsPsSelect').empty().append(
+                $('<option>').val('').text('Select problem set…').prop('disabled', true).prop('selected', true)
+            );
+            (psList || []).forEach(ps => $('#stpsPsSelect').append(new Option(ps.name, ps.id)));
+        });
+    });
+
+    $('#stpsSaveBtn').on('click', () => {
+        const name    = $('#stpsNameInp').val().trim();
+        const psId    = $('#stpsPsSelect').val();
+        if (!name)  { alert('Problem name is required.');  return; }
+        if (!psId)  { alert('Please select a problem set.'); return; }
+
+        const premisesStr = $('#probpremises').val().trim();
+        const premises = premisesStr
+            ? premisesStr.split(/[,;]+/).map(s => s.trim()).filter(Boolean)
+            : [];
+        const conclusion = $('#probconc').val().trim();
+        if (!conclusion) { alert('Conclusion is required.'); return; }
+
+        $.ajax({
+            url: '/backend/instructor/problem_sets/' + psId + '/problems',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                name, premises, conclusion,
+                logic_type: $('#folradio').is(':checked') ? 'fol' : 'prop',
+                points: parseInt($('#stpsPointsInp').val()) || null,
+            }),
+            headers: { 'X-Auth-Token': User.getIdToken() },
+            dataType: 'json',
+        }).then(() => {
+            $('#saveToPsModal').modal('hide');
+            alert('Problem added to problem set!');
+        }).fail(xhr => alert('Error: ' + (xhr.responseText || xhr.statusText)));
+    });
+
+    // ── Admin modal ────────────────────────────────────────────────────────
+    $('#adminLink').on('click', () => $('#adminModal').modal('show'));
+    $('.downloadCSV').on('click', () => getCSV());
 });
 
+// ── Proof UI helpers ───────────────────────────────────────────────────────
 function resetProofUI() {
-   $('#proofName').val('');			// clear name
-   $('#tflradio').prop('checked', true);	// set to Propositional
-   $('#probpremises').val('');			// clear premises
-   $('#probconc').val('');			// clear conclusion
-   $('.proofNameSpan').text('');		// clear proof name
-   $('#theproof').empty();			// remove all HTML from 'theproof' element
-   $('.proofContainer').removeData();		// clear proof body
-
-   // reset all select boxes to "Select..." (the first option element)
-   $('#load-container select option:nth-child(1)').prop('selected', true);
+    $('#proofName').val('');
+    $('#tflradio').prop('checked', true);
+    $('#probpremises').val('');
+    $('#probconc').val('');
+    $('.proofNameSpan').text('');
+    $('#theproof').empty();
+    $('.proofContainer').removeData();
+    // Reset only the legacy saved-proofs select, not the nav selects
+    $('#userProofSelect option:first-child').prop('selected', true);
 }
 
-// predicateSettings = (document.getElementById("folradio").checked);
-// var pstr = document.getElementById("probpremises").value;
-// var conc = fixWffInputStr(document.getElementById("probconc").value);
 function createProb(proofName, premisesString, conclusionString) {
+    const pstr = premisesString.replace(/^[,;\s]*/, '').replace(/[,;\s]*$/, '');
+    const prems = pstr.split(/[,;\s]*[,;][,;\s]*/);
 
-   // verify the premises are well-formed
-   let pstr = premisesString.replace(/^[,;\s]*/,'');
-   pstr = pstr.replace(/[,;\s]*$/,'');
-   let prems = pstr.split(/[,;\s]*[,;][,;\s]*/);
+    const conc = fixWffInputStr(conclusionString);
+    const cw   = parseIt(conc);
+    if (!cw.isWellFormed) {
+        alert('The conclusion ' + fixWffInputStr(conc) + ' is not well formed.');
+        return false;
+    }
+    if (predicateSettings && cw.allFreeVars.length !== 0) {
+        alert('The conclusion is not closed.');
+        return false;
+    }
 
-   // verify the conclusion is well-formed
-   let conc = fixWffInputStr(conclusionString);
-   var cw = parseIt(conc);
-   if (!(cw.isWellFormed)) {
-      alert('The conclusion ' + fixWffInputStr(conc) + ', is not well formed.');
-      return false;
-   }
-   if ((predicateSettings) && (!(cw.allFreeVars.length == 0))) {
-      alert('The conclusion is not closed.');
-      return false;
-   }
-
-   // set the body of the proof
-   // If the proof body is attached to the proofContainerData as array Logic[],
-   // get the proof body from that.  Otherwise initialize the proof body from
-   // the premises.
-   // Note: for legacy reasons Logic always contains a single element -- the
-   // JSON encoding of the proof data.
-   let proofdata = [];
-   let proofContainerData = $('.proofContainer').data();
-   if (proofContainerData.hasOwnProperty('Logic')) {
-      if (Array.isArray(proofContainerData.Logic) && proofContainerData.Logic.length > 0) {
-	 proofdata = JSON.parse(proofContainerData.Logic[0])
-      } else {
-	 console.warn('Error/unexpected: Logic is not a non-empty array', proofContainerData);
-      }
-   } else {
-      for (let a=0; a<prems.length; a++) {
-	 if (prems[a] != '') {
-	    let w = parseIt(fixWffInputStr(prems[a]));
-	    if (!(w.isWellFormed)) {
-               alert('Premise ' + (a+1) + ', ' + fixWffInputStr(prems[a]) + ', is not well formed.');
-               return false;
+    let proofdata = [];
+    const containerData = $('.proofContainer').data();
+    if (Object.prototype.hasOwnProperty.call(containerData, 'Logic')) {
+        if (Array.isArray(containerData.Logic) && containerData.Logic.length > 0) {
+            proofdata = JSON.parse(containerData.Logic[0]);
+        }
+    } else {
+        for (let a = 0; a < prems.length; a++) {
+            if (prems[a] !== '') {
+                const w = parseIt(fixWffInputStr(prems[a]));
+                if (!w.isWellFormed) {
+                    alert('Premise ' + (a + 1) + ', ' + fixWffInputStr(prems[a]) + ', is not well formed.');
+                    return false;
+                }
+                if (predicateSettings && w.allFreeVars.length !== 0) {
+                    alert('Premise ' + (a + 1) + ' is not closed.');
+                    return false;
+                }
+                proofdata.push({ wffstr: wffToString(w, false), jstr: 'Pr' });
             }
-	    if ((predicateSettings) && (!(w.allFreeVars.length == 0))) {
-               alert('Premise ' + (a+1) + ' is not closed.');
-               return false;
-	    }
-	    proofdata.push({
-               "wffstr": wffToString(w, false),
-               "jstr": "Pr"
-	    });
-	 }
-      }
-   }
+        }
+    }
 
-   $('.createProof').slideUp();
-   resetProofUI();
-   $('.proofContainer').show();
-   $('.proofNameSpan').text(proofName);
+    $('.createProof').slideUp();
+    resetProofUI();
+    $('.proofContainer').show();
+    $('.proofNameSpan').text(proofName);
 
-   // set the argument (premises/conclusion)  string
-   var probstr = '';
-   for (var k=0; k < prems.length; k++) {
-      probstr += prettyStr(prems[k]);
-      if ((k+1) < prems.length) {
-	 probstr += ', ';
-      }
-   }
-   document.getElementById("proofdetails").innerHTML = "Construct a proof for the argument: " + probstr + " ∴ " +  wffToString(cw, true);
+    let probstr = '';
+    for (let k = 0; k < prems.length; k++) {
+        probstr += prettyStr(prems[k]);
+        if (k + 1 < prems.length) probstr += ', ';
+    }
+    document.getElementById('proofdetails').innerHTML =
+        'Construct a proof for the argument: ' + probstr + ' ∴ ' + wffToString(cw, true);
 
-   var tp = document.getElementById("theproof");
-   makeProof(tp, proofdata, wffToString(cw, false));
-   return true;
+    makeProof(document.getElementById('theproof'), proofdata, wffToString(cw, false));
+    return true;
 }

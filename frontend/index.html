@@ -65,26 +65,27 @@
       </div>
     </div>
 
-    <!-- middle stuff -->
+    <!-- middle stuff: course → problem set → problem navigation -->
     <div id="load-container" style="display: none;">
-      <div style="float: left;"> 
-        <label for="userProofSelect">load unfinished proofs: </label>
+      <div id="courseSelectWrap" style="float:left; display:none;">
+        <label for="courseSelect">course: </label>
+        <select id="courseSelect" class="navSelect proofSelect"></select>
+      </div>
+      <div id="psSelectWrap" style="float:left; padding-left:.9rem; display:none;">
+        <label for="psSelect">problem set: </label>
+        <select id="psSelect" class="navSelect proofSelect"></select>
+      </div>
+      <div id="problemSelectWrap" style="float:left; padding-left:.9rem; display:none;">
+        <label for="problemSelect">problem: </label>
+        <select id="problemSelect" class="navSelect proofSelect"></select>
+      </div>
+      <div id="retryWrap" style="float:left; padding-left:.9rem; display:none;">
+        <button id="retryBtn" class="ui small button">↺ Retry</button>
+      </div>
+      <div id="legacyProofsWrap" style="float:left; padding-left:.9rem; display:none;">
+        <label for="userProofSelect">my saved proofs: </label>
         <select id="userProofSelect" class="proofSelect">
-          <option> waiting for server...</option>
-        </select>
-      </div>
-      <!--  -->
-      <div style="float: left; padding-left: .9rem;"> 
-        <label for="repoProofSelect">load repository problems: </label>
-        <select id="repoProofSelect" class="proofSelect" data-content="Checking a repository problem will overwrite any past attempts of the selected problem.">
-          <option> waiting for server...</option>
-        </select>
-      </div>
-      <!--  -->
-      <div style="float: left; padding-left: .9rem;"> 
-        <label for="userCompletedProofSelect">finished repository problems: </label>
-        <select id="userCompletedProofSelect" class="proofSelect" data-content="Finished repository problems can be edited.">
-          <option> waiting for server...</option>
+          <option>waiting for server...</option>
         </select>
       </div>
     </div>
@@ -114,7 +115,11 @@
               <button type="button" id="createProb">create problem</button><br /><br />
             </div>
             <div class="proofContainer" style="display: none;">
-              <h3 id="problabel">Proof: <span class="proofNameSpan"></span></h3>
+              <div style="display:flex; align-items:baseline; gap:.75rem; flex-wrap:wrap; margin-bottom:.25rem;">
+                <h3 id="problabel" style="margin:0;">Proof: <span class="proofNameSpan"></span></h3>
+                <button type="button" id="saveToPsBtn" class="ui small button" style="display:none;">Save to Problem Set</button>
+              </div>
+              <p id="problemcontext" style="color:#666; font-size:.9em; margin:.25rem 0; display:none;"></p>
               <p id="proofdetails"></p>
               <div id="theproof"></div>
               <br>
@@ -189,8 +194,43 @@
     </div>
 </div>
 
+<!-- Save-to-Problem-Set modal (instructors only) -->
+<div class="ui modal" id="saveToPsModal">
+  <div class="header">Save to Problem Set</div>
+  <div class="content">
+    <form class="ui form">
+      <div class="required field">
+        <label>Problem name</label>
+        <input type="text" id="stpsNameInp" />
+      </div>
+      <div class="two fields">
+        <div class="field">
+          <label>Logic type</label>
+          <input type="text" id="stpsLogicInp" readonly style="background:#f8f8f8;" />
+        </div>
+        <div class="field">
+          <label>Points <span style="font-weight:normal; color:#888;">(blank = ungraded)</span></label>
+          <input type="number" id="stpsPointsInp" min="0" />
+        </div>
+      </div>
+      <div class="required field">
+        <label>Course</label>
+        <select id="stpsCourseSelect" style="width:100%;"></select>
+      </div>
+      <div class="required field">
+        <label>Problem Set</label>
+        <select id="stpsPsSelect" style="width:100%;"></select>
+      </div>
+    </form>
+  </div>
+  <div class="actions">
+    <button class="ui deny button">Cancel</button>
+    <button class="ui primary button" id="stpsSaveBtn">Add to Problem Set</button>
+  </div>
+</div>
+
 <!-- Administration Interface -->
-<div class="ui modal">
+<div class="ui modal" id="adminModal">
   <i class="close icon"></i>
   <div class="header">
     Administrator Options
