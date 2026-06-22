@@ -46,10 +46,21 @@ class User {
       return this;
    }
 
+   showInstructorLink() {
+      $('#instructorLink').show();
+      return this;
+   }
+
    loadProofs() {
       loadUserProofs();
       loadRepoProofs();
       loadUserCompletedProofs();
+      // Show Instructor link if this user is an instructor
+      $.ajax({
+         url: '/backend/instructor/courses',
+         method: 'GET',
+         headers: { 'X-Auth-Token': this.email },
+      }).then(() => this.showInstructorLink()).fail(() => {});
       return this;
    }
 

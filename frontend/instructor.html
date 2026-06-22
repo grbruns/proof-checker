@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Instructor — Proof Checker</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Noto+Sans" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Josefin+Sans" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="assets/lib/normalize.min.css" integrity="sha256-l85OmPOjvil/SOvVt3HnSSjzF1TUMyT9eV0c2BzEGzU=" />
+  <link rel="stylesheet" href="assets/lib/semantic.min.css" integrity="sha256-9mbkOfVho3ZPXfM7W8sV2SndrGDuh7wuyLjtsWeTI1Q=" />
+  <link rel="stylesheet" href="index.css" />
+  <style>
+    .course-item { padding: .45rem .75rem; cursor: pointer; border-radius: 4px; margin-bottom: 2px; }
+    .course-item:hover { background: rgba(0,0,0,.06); }
+    .course-item.selected { background: #ddeeff; font-weight: bold; }
+    .ps-card { border: 1px solid #ddd; border-radius: 4px; margin-bottom: .75rem; }
+    .ps-card-header { padding: .6rem 1rem; background: #f4f4f4; border-radius: 4px 4px 0 0;
+                      display: flex; align-items: center; gap: .5rem; cursor: pointer;
+                      user-select: none; }
+    .ps-card-header:hover { background: #ebebeb; }
+    .ps-card-body { padding: 1rem; display: none; border-top: 1px solid #ddd; }
+    .ps-card-body.open { display: block; }
+    #main { padding: 1.25rem 1.5rem; }
+    #course-panel { border-right: 1px solid #ddd; }
+    .detail-placeholder { color: #888; padding: 2rem 0; }
+    .course-tab { display: none; padding-top: 1rem; }
+    .course-tab.active { display: block; }
+  </style>
+</head>
+<body>
+
+<div id="top-menu" class="ui menu" style="height:60px;">
+  <div class="header item">
+    <h1 id="title"><a href="index.html">Proof Checker</a></h1>
+  </div>
+  <a href="index.html" class="item">Proof Editor</a>
+  <a href="rules.html" class="item">Proof Rules</a>
+  <a href="help.html" class="item">Help</a>
+  <div class="right menu">
+    <div class="header item"><span id="userEmail"></span></div>
+    <div id="signinRow" class="item">
+      <div class="ui input" style="margin-right:.5rem;">
+        <input id="signinEmail" type="email" placeholder="your@email.edu" />
+      </div>
+      <button class="ui button" onclick="handleSignIn()">Sign In</button>
+    </div>
+  </div>
+</div>
+
+<div id="notAuthorized" class="ui error message" style="margin:2rem; display:none;">
+  <div class="header">Not authorized</div>
+  <p>You are not registered as an instructor. Contact your app administrator.</p>
+</div>
+
+<div id="main" style="display:none;">
+  <div class="ui stackable grid">
+
+    <!-- Left: course list -->
+    <div class="four wide column" id="course-panel">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.75rem;">
+        <h3 class="ui header" style="margin:0;">My Courses</h3>
+        <button class="ui small primary button" id="newCourseBtn">+ New</button>
+      </div>
+      <div id="courseList"></div>
+    </div>
+
+    <!-- Right: course detail -->
+    <div class="twelve wide column">
+      <div id="noCourseMsg" class="detail-placeholder">
+        Select a course from the list, or create a new one.
+      </div>
+
+      <div id="courseDetail" style="display:none;">
+        <div style="display:flex; align-items:baseline; gap:.75rem; margin-bottom:1rem; flex-wrap:wrap;">
+          <h2 class="ui header" style="margin:0;" id="courseDetailName"></h2>
+          <button class="ui small button" id="editCourseBtn">Edit</button>
+          <button class="ui small red basic button" id="deleteCourseBtn">Delete</button>
+        </div>
+
+        <div class="ui tabular menu course-tab-menu">
+          <a class="active item" data-tab="tab-ps">Problem Sets</a>
+          <a class="item" data-tab="tab-students">Students</a>
+          <a class="item" data-tab="tab-tas">TAs</a>
+        </div>
+
+        <!-- Problem Sets tab -->
+        <div class="course-tab active" data-tab="tab-ps">
+          <button class="ui primary button" id="newPsBtn">+ New Problem Set</button>
+          <div id="problemSetList" style="margin-top:1rem;"></div>
+        </div>
+
+        <!-- Students tab -->
+        <div class="course-tab" data-tab="tab-students">
+          <h4>Add students</h4>
+          <p style="color:#666; font-size:.9em; margin:.25rem 0 .5rem;">
+            One email per line, or comma-separated.
+          </p>
+          <textarea id="studentEmailsInput" rows="4"
+            style="width:100%; font-family:monospace; margin-bottom:.5rem; border:1px solid #ddd; border-radius:3px; padding:.5rem;">
+          </textarea>
+          <button class="ui primary button" id="addStudentsBtn">Add Students</button>
+          <div class="ui divider"></div>
+          <div class="ui toggle checkbox" style="margin-bottom:1rem;">
+            <input type="checkbox" id="tasViewSolutionsChk" />
+            <label>Allow TAs to view solutions for this course</label>
+          </div>
+          <div class="ui divider"></div>
+          <h4>Enrolled students (<span id="studentCount">0</span>)</h4>
+          <div id="studentList"></div>
+        </div>
+
+        <!-- TAs tab -->
+        <div class="course-tab" data-tab="tab-tas">
+          <h4>Add TA</h4>
+          <div class="ui action input" style="margin-bottom:1rem;">
+            <input type="email" id="taEmailInput" placeholder="ta@example.edu" />
+            <button class="ui primary button" id="addTaBtn">Add</button>
+          </div>
+          <div id="taList"></div>
+        </div>
+      </div><!-- /courseDetail -->
+    </div><!-- /right column -->
+
+  </div><!-- /grid -->
+</div><!-- /main -->
+
+<!-- ── Modals ─────────────────────────────────────────────────────────────── -->
+
+<div class="ui modal" id="courseModal">
+  <div class="header" id="courseModalTitle">New Course</div>
+  <div class="content">
+    <form class="ui form">
+      <div class="required field">
+        <label>Name</label>
+        <input type="text" id="courseNameInp" placeholder="e.g. Logic 320" />
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <textarea id="courseDescInp" rows="2"></textarea>
+      </div>
+      <div class="field">
+        <label>Max students</label>
+        <input type="number" id="courseMaxInp" value="200" min="1" max="2000" />
+      </div>
+    </form>
+  </div>
+  <div class="actions">
+    <button class="ui deny button">Cancel</button>
+    <button class="ui primary button" id="saveCourseBtn">Save</button>
+  </div>
+</div>
+
+<div class="ui modal" id="psModal">
+  <div class="header" id="psModalTitle">New Problem Set</div>
+  <div class="content">
+    <form class="ui form">
+      <div class="required field">
+        <label>Name</label>
+        <input type="text" id="psNameInp" />
+      </div>
+      <div class="inline field">
+        <div class="ui toggle checkbox">
+          <input type="checkbox" id="psPublishedInp" />
+          <label>Published (visible to students)</label>
+        </div>
+      </div>
+      <div class="two fields">
+        <div class="field">
+          <label>Available from</label>
+          <input type="datetime-local" id="psAvailFromInp" />
+        </div>
+        <div class="field">
+          <label>Due date <span style="font-weight:normal; color:#888;">(informational)</span></label>
+          <input type="datetime-local" id="psDueDateInp" />
+        </div>
+      </div>
+      <div class="two fields">
+        <div class="field">
+          <label>Until <span style="font-weight:normal; color:#888;">(hard cutoff)</span></label>
+          <input type="datetime-local" id="psUntilInp" />
+        </div>
+        <div class="field">
+          <label>Release solutions at</label>
+          <input type="datetime-local" id="psRelSolInp" />
+        </div>
+      </div>
+      <div class="two fields">
+        <div class="field">
+          <label>Time limit (minutes, blank = none)</label>
+          <input type="number" id="psTimeLimitInp" min="1" />
+        </div>
+        <div class="field">
+          <label>Max attempts per problem (blank = unlimited)</label>
+          <input type="number" id="psMaxAttInp" min="1" />
+        </div>
+      </div>
+    </form>
+  </div>
+  <div class="actions">
+    <button class="ui deny button">Cancel</button>
+    <button class="ui primary button" id="savePsBtn">Save</button>
+  </div>
+</div>
+
+<div class="ui modal" id="problemModal">
+  <div class="header">Add Problem</div>
+  <div class="content">
+    <form class="ui form">
+      <div class="required field">
+        <label>Name</label>
+        <input type="text" id="probNameInp" placeholder="e.g. Modus Ponens 1" />
+      </div>
+      <div class="two fields">
+        <div class="field">
+          <label>Logic type</label>
+          <select id="probLogicInp" class="ui dropdown">
+            <option value="prop">Propositional</option>
+            <option value="fol">First-Order</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Points <span style="font-weight:normal; color:#888;">(blank = ungraded)</span></label>
+          <input type="number" id="probPointsInp" min="0" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Premises <span style="font-weight:normal; color:#888;">(comma-separated, e.g. P, P → Q)</span></label>
+        <input type="text" id="probPremisesInp" placeholder="P, P → Q" />
+      </div>
+      <div class="required field">
+        <label>Conclusion</label>
+        <input type="text" id="probConcInp" placeholder="Q" />
+      </div>
+    </form>
+  </div>
+  <div class="actions">
+    <button class="ui deny button">Cancel</button>
+    <button class="ui primary button" id="saveProbBtn">Add Problem</button>
+  </div>
+</div>
+
+<div class="ui modal" id="solutionModal">
+  <div class="header">Solution: <span id="solutionProbName"></span></div>
+  <div class="content">
+    <p style="color:#888; font-size:.9em;" id="solutionMeta"></p>
+    <div id="solutionContent"
+      style="background:#f5f5f5; padding:1rem; border-radius:4px; font-family:monospace;
+             white-space:pre-wrap; max-height:420px; overflow:auto; font-size:.9em;">
+    </div>
+  </div>
+  <div class="actions">
+    <button class="ui deny button">Close</button>
+  </div>
+</div>
+
+<script src="assets/lib/jquery.min.js" integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0="></script>
+<script src="assets/lib/semantic.min.js" integrity="sha256-t8GepnyPmw9t+foMh3mKNvcorqNHamSKtKRxxpUEgFI="></script>
+<script src="instructor.js"></script>
+</body>
+</html>
