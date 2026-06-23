@@ -7,15 +7,18 @@ const repositoryData = {
 }
 
 let adminUsers = [];
+let _idToken = null;
 
-/**
- * This function is called by the Google Sign-in Button
- * @param {*} googleUser 
- */
-function onSignIn(googleUser) {
-   console.log("onSignIn", googleUser);
+function _decodeJwt(token) {
+   const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+   return JSON.parse(atob(base64));
+}
 
-   // This response will be cached after the first page load
+function onSignIn(response) {
+   _idToken = response.credential;
+   const payload = _decodeJwt(_idToken);
+   console.log("onSignIn", payload.email);
+
    $.getJSON('/backend/admins', (admins) => {
       try {
 	 adminUsers = admins['Admins'];
@@ -23,7 +26,7 @@ function onSignIn(googleUser) {
 	 console.error('Unable to load admin users', e);
       }
 
-      new User(googleUser)
+      new User(payload)
 	 .initializeDisplay()
 	 .loadProofs();
    });
@@ -33,12 +36,11 @@ function onSignIn(googleUser) {
  * Class for functionality specific to user sign-in/authentication
  */
 class User {
-   // Constructor is called from User.onSignIn - not intended for direct use.
-   constructor(googleUser) {
-      this.profile = googleUser.getBasicProfile();
-      this.domain = googleUser.getHostedDomain();
-      this.email = this.profile.getEmail();
-      this.name = this.profile.getName();
+   // Constructor is called from onSignIn - not intended for direct use.
+   constructor(payload) {
+      this.email = payload.email;
+      this.name = payload.name;
+      this.domain = payload.hd || '';
 
       if (adminUsers.indexOf(this.email) > -1) {
 	 console.log('Logged in as an administrator.');
@@ -72,37 +74,30 @@ class User {
    }
 
    attachSignInChangeListener() {
-      gapi.auth2.getAuthInstance().isSignedIn.listen(this.signInChangeListener);
-
       return this;
    }
 
-   signInChangeListener(loggedIn) {
-      console.log('Sign in status changed', loggedIn);
-      window.location.reload();
-   }
-
    static isSignedIn() {
-      return gapi.auth2.getAuthInstance().isSignedIn.get();
+      return _idToken != null;
    }
 
    static isAdministrator() {
-      return adminUsers.indexOf(gapi.auth2.getAuthInstance().currentUser.get().getBasicProfile().getEmail()) > -1;
+      return _idToken != null && adminUsers.indexOf(_decodeJwt(_idToken).email) > -1;
    }
 
-   // Check if the current time (in unix timestamp) is after the token's expiration
+   // Check if the current time (unix seconds) is after the token's expiration
    static isTokenExpired() {
-      return + new Date() > gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().expires_at;
+      return _idToken == null || Date.now() / 1000 > _decodeJwt(_idToken).exp;
    }
 
-   // Retrieve the last cached token
+   // Retrieve the stored credential token
    static getIdToken() {
-      return gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().id_token;
+      return _idToken;
    }
 
-   // Get a newly issued token (returns a promise)
+   // GIS tokens last ~1 hour; reload the page to re-authenticate after expiry
    static refreshToken() {
-      return gapi.auth2.getAuthInstance().currentUser.get().reloadAuthResponse();
+      return Promise.reject(new Error('Session expired. Please reload the page to sign in again.'));
    }
 }
 
