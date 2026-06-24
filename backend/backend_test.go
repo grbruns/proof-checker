@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	datastore "./datastore"
+	datastore "proof-checker-backend/datastore"
 )
 
 const (

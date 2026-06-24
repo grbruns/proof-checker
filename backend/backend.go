@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"flag"
 
-	datastore "./datastore"
-	tokenauth "./google-token-auth"
+	datastore "proof-checker-backend/datastore"
+	tokenauth "proof-checker-backend/google-token-auth"
 )
 
 var (
