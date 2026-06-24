@@ -57,12 +57,12 @@ function updateBackend {
 
 # Update only branches which have changed
 function updateChangedBranches {
-    # Pull both branches
+    # Fetch and reset both branches, discarding any local modifications (e.g. from go build)
     git fetch --all
     git checkout master
-    git pull
+    git reset --hard origin/master
     git checkout dev
-    git pull
+    git reset --hard origin/dev
 
     # Get latest commit id from both branches
     MASTER_REV=$(git rev-parse refs/heads/master)
